@@ -1,8 +1,5 @@
 name: Build debug APK
 
-# Runs on GitHub's servers, which have network access and the Android SDK.
-# Push this folder to a GitHub repository, open the Actions tab, run "Build debug APK" (or just push).
-# The APK is attached to the run as "app-debug-apk". If the build fails, "build-output" holds the full log.
 on:
   push:
   workflow_dispatch:
@@ -18,15 +15,30 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - uses: android-actions/setup-android@v3
+      - name: Prepare Android SDK
+        shell: bash
+        run: |
+          set +o pipefail
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
 
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.11.1"
 
       - name: Build
-        run: gradle :app:assembleDebug --stacktrace 2>&1 | tee build-output.txt
         shell: bash
+        run: gradle :app:assembleDebug --stacktrace 2>&1 | tee build-output.txt
+
+      - name: Show errors
+        if: failure()
+        shell: bash
+        run: |
+          echo '### Build errors' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          grep -E '^e: |error:|FAILURE|What went wrong' -A2 build-output.txt | head -80 >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Keep the log
         if: always()
