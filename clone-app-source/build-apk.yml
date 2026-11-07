@@ -1,0 +1,42 @@
+name: Build debug APK
+
+# Runs on GitHub's servers, which have network access and the Android SDK.
+# Push this folder to a GitHub repository, open the Actions tab, run "Build debug APK" (or just push).
+# The APK is attached to the run as "app-debug-apk". If the build fails, "build-output" holds the full log.
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Build
+        run: gradle :app:assembleDebug --stacktrace 2>&1 | tee build-output.txt
+        shell: bash
+
+      - name: Keep the log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: build-output.txt
+
+      - name: Keep the APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
