@@ -1,0 +1,4 @@
+# Copy to local.properties (it is git-ignored). Names only; you create the accounts and put the values in.
+# Product id of the one-time "unlock" product you create in Play Console (Monetize > One-time products).
+play.unlockProductId=
+# sdk.dir is written by Android Studio.
