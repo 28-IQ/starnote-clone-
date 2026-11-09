@@ -1,0 +1,79 @@
+name: Build debug APK
+
+# Runs on GitHub's servers, which have network access and the Android SDK already installed.
+# Push this folder to a GitHub repository, open the Actions tab, run "Build debug APK" (or just push).
+# The APK is attached to the run as "app-debug-apk". If the build fails, "build-output" holds the full log,
+# and the first errors are also shown on the run's summary page.
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The Gradle files may sit in a subfolder if the upload put them there; find them instead of assuming the root.
+      - name: Find the Gradle project
+        shell: bash
+        run: |
+          DIR=$(find . -name settings.gradle.kts -not -path './.git/*' -print -quit | xargs -r dirname)
+          if [ -z "$DIR" ]; then
+            echo "No settings.gradle.kts found in the repository. Files in the repository:"
+            find . -not -path './.git/*' -type f | head -60
+            {
+              echo '### The project files are missing from the repository'
+              echo 'No settings.gradle.kts was found. Upload the contents of clone-app-source.zip (app, gradle, build.gradle.kts, settings.gradle.kts, ...) to the repository.'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "Gradle project in: $DIR"
+          echo "APP_DIR=$DIR" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # The runner image already contains the Android SDK. The android-actions/setup-android step failed on it
+      # ("Failed to find package 'tools'"), so it is not used. Accept the licenses and add the platform we build against.
+      - name: Prepare Android SDK
+        shell: bash
+        run: |
+          set +o pipefail
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Build
+        shell: bash
+        run: gradle -p "$APP_DIR" :app:assembleDebug --stacktrace 2>&1 | tee build-output.txt
+
+      - name: Show errors
+        if: failure()
+        shell: bash
+        run: |
+          [ -f build-output.txt ] || exit 0
+          echo '### Build errors' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          grep -E '^e: |error:|FAILURE|What went wrong' -A2 build-output.txt | head -80 >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: build-output.txt
+          if-no-files-found: ignore
+
+      - name: Keep the APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: ${{ env.APP_DIR }}/app/build/outputs/apk/debug/app-debug.apk
